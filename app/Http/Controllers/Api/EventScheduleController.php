@@ -34,14 +34,16 @@ class EventScheduleController extends Controller
             ->with('event', $this->eventsRepository->findByID($request->id));
     }
 
-    public function schedule_day($name, $event_schedule_id, $date)
+    public function schedule_day($name, $event_schedule_id, $date, LecturesRepository $lecturesRepository)
     {
         $EventScheduleDay = $this->eventScheduleRepository->findByID($event_schedule_id);
-
+        $array_is_subscriber = $this->eventsRepository->isUserSubscriberInEvent($EventScheduleDay->event_id, auth()->id());
+        $is_pending = count($array_is_subscriber) ? false : true;
         return view('api/default_user/events/schedule_day')
             ->with('event_schedule', $EventScheduleDay)
-            ->with('lectures', $this->eventScheduleRepository->getAllLectures($event_schedule_id))
-            ->with('courses', $this->eventScheduleRepository->getAllCourses($event_schedule_id));
+            ->with('lectures', $lecturesRepository->getAllLecturesByScheduleIdAndType($event_schedule_id, 'Palestras'))
+            ->with('courses', $lecturesRepository->getAllLecturesByScheduleIdAndType($event_schedule_id, 'Cursos'))
+            ->with('is_pending', $is_pending);
     }
 
     public function subscribe($event_schedule_id, $lecture_id, UsersLectureRepository $usersLectureRepository, LecturesRepository $lecturesRepository)
@@ -50,21 +52,21 @@ class EventScheduleController extends Controller
         $EventSchedule = $this->eventScheduleRepository->findByID($event_schedule_id);
         $event_id = $EventSchedule->event_id;
         $user_id = Auth::id();
-        $LecturesSubscribed = $usersLectureRepository->getAllLecturesThatUserIsSubscriber($event_id, $user_id, $EventSchedule->date);
+        $LecturesSubscribed = $usersLectureRepository->getAllLecturesThatUserIsSubscriber($user_id, $EventSchedule->id);
         $conflicts = $this->getArrayOfConfirmsInTheSameHour($LecturesSubscribed, $Lecture);
         if (array_count_values($conflicts)) {
             return response()->json(['status' => 'conflict', 'conflict_ids' => $conflicts]);
         } else {
             DB::beginTransaction();
             try {
-                $count = $usersLectureRepository->countUsersSubscribedInLecture($event_id, $lecture_id);
-                if($count < $Lecture->max_people) {
+                $count = $usersLectureRepository->countUsersSubscribedInLecture($event_id, $lecture_id)->first();
+                if ($count->user_count < $Lecture->max_people) {
                     $isSubscriber = $this->eventsRepository->isUserSubscriberInEvent($event_id, $user_id);
                     $is = (count($isSubscriber)) ? true : 'false';
                     $usersLectureRepository->create(['user_id' => $user_id, 'lecture_id' => $lecture_id]);
                     DB::commit();
                     return response()->json(['status' => true, 'message' => '', 'subs' => $is, 'lecture_id' => $lecture_id]);
-                }else{
+                } else {
                     DB::commit();
                     return response()->json(['status' => 'maxpeople', 'message' => 'Esta palestra/curso já atingiu o número máximo', 'lecture_id' => $lecture_id]);
                 }
@@ -88,11 +90,13 @@ class EventScheduleController extends Controller
 
     }
 
-    public function lecturesSubscribed($event_schedule_id, UsersLectureRepository $usersLectureRepository)
+    public function lecturesSubscribed($event_schedule_id, UsersLectureRepository $usersLectureRepository, LecturesRepository $lecturesRepository)
     {
         $EventSchedule = $this->eventScheduleRepository->findByID($event_schedule_id);
-        $LecturesSubscribed = $usersLectureRepository->getAllLecturesThatUserIsSubscriber($EventSchedule->event_id, Auth::id(), $EventSchedule->date);
-        return response()->json(['status' => true, 'lectures_subscribed' => $LecturesSubscribed]);
+        $schedule_id = $EventSchedule->id;
+        $CrowdedLectures = $lecturesRepository->getAllCrowdedLecturesFromEventAndDate($schedule_id);
+        $LecturesSubscribed = $usersLectureRepository->getAllLecturesThatUserIsSubscriber(Auth::id(), $schedule_id);
+        return response()->json(['status' => true, 'lectures_subscribed' => $LecturesSubscribed, 'crowded_lectures' => $CrowdedLectures]);
     }
 
     private function getArrayOfConfirmsInTheSameHour($lectures, $lecture)
