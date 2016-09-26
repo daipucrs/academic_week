@@ -17,6 +17,21 @@ Route::group(['namespace' => 'Web'], function () {
 Route::group(['namespace' => 'Api'], function () {
     Route::get('dashboard', 'DashboardController@index');
     Route::get('evento/{name}/{id}/programacao', 'EventScheduleController@index')->name('event.schedule');
+    Route::get('evento/{name}/np/{event_schedule_id}/dia/{date}', 'EventScheduleController@schedule_day')->name('event.schedule.day');
+    Route::get('participar/programacao/{event_schedule_id}/palestra/{lecture_id}', 'EventScheduleController@subscribe')->name('event.schedule.subscribe');
+    Route::get('desinscrever/palestra/{lecture_id}', 'EventScheduleController@unsubscribe');
+    Route::get('get/palestras/{event_schedule_id}', 'EventScheduleController@lecturesSubscribed');
+    Route::get('imgs/{slug}', [
+        'as' => 'images.show',
+        'uses' => 'ImageController@show',
+        'middleware' => 'auth',
+    ]);
+    // Admin Routes...
+    Route::group(['namespace'=>'Users\Admin', 'middleware'=>'can:index,AcademicDirectory\Domains\Users\User'], function (){
+        Route::get('usuarios', 'UsersController@index')->name('users.index');
+        Route::post('usuarios/pesquisaPorRg', 'UsersController@searchByRg')->name('search.user.by.rg');
+        Route::post('usuarios/ativarNoEvento', 'UsersController@activeUserInEvent')->name('active.user.in.event');
+    });
 });
 
 // Authentication Routes...
